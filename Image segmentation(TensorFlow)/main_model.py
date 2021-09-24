@@ -9,12 +9,10 @@ import matplotlib.pyplot as plt
 import os
 
 # load dataset
-dataset = "G:/rauf/STEPBYSTEP/Data/oxford_pets"
-
+# load dataset
 image_path = "G:/rauf/STEPBYSTEP/Data/oxford_pets/images"
 annotation_path = "G:/rauf/STEPBYSTEP/Data/oxford_pets/annotations/trimaps"
 
-#
 input_img_path = sorted([
     os.path.join(image_path, fname)
     for fname in os.listdir(image_path)
@@ -27,23 +25,92 @@ input_annotation_path = ([
     if fname.endswith(".png") and not fname.startswith(".")
     ])
 
-# data preprocessing
-def normalize(input_images, input_masks):
-    input_images = tf.cast(input_images, tf.float32)/255.0
-    input_masks -= 1
-    return input_images, input_masks
+print(len(input_img_path), len(input_annotation_path)) #so we have 7390 photos and their annotation masks
 
-def load_image(dadapoint):
-    input_image = tf.image.resize(datapoint['images'], (128, 128))
-    input_mask = tf.image.resize(datapoint['annotations/trimaps'], (128, 128))
+# preprocess image dataset
+IMG_SIZE = 128
+BATCH_SIZE = 32
+AUTOTUNE = tf.data.experimental.AUTOTUNE
 
-    input_image, input_mask = normalize(input_image, input_mask)
+def scale_down(image, mask):
+    image = tf.cast(image, tf.float32)/255.0
+    mask -= 1
+    return image, mask
 
-    return input_image, input_mask
+def load_and_preprocess(image_filepath, mask_filepath):
+    img = tf.io.read_file(image_filepath)
+    img = tf.io.decode_jpeg(img, channels=3)
+    img = tf.image.resize(img, [IMG_SIZE, IMG_SIZE])
 
-#
-img_train, annotation_train = input_img_path[:-1000], input_annotation_path[:-1000]
-img_test, annotation_test = input_img_path[-1000:], input_annotation_path[-1000:]
+    mask = tf.io.read_file(mask_filepath)
+    mask = tf.io.decode_png(mask, channels=1)
+    mask = tf.image.resize(mask, [IMG_SIZE, IMG_SIZE])
 
-train_ds = tf.data.Dataset.from_tensor_slices((img_train, annotation_train))
-test_ds = tf.data.Dataset.from_tensor_slices((img_test, annotation_test))
+    img, mask = scale_down(img, mask)
+
+    return img, mask
+
+# shuffle and split data
+
+input_img_path = tf.random.shuffle(input_img_path, seed=42)
+input_annotation_path = tf.random.shuffle(input_annotation_path, seed=42)
+input_img_path_train, input_annotation_path_train = input_img_path[:-1000], input_annotation_path[:-1000]
+input_img_path_test, input_annotation_path_test = input_img_path[-1000:], input_annotation_path[-1000:]
+
+trainloader = tf.data.Dataset.from_tensor_slices((input_img_path_train, input_annotation_path_train))
+testloader = tf.data.Dataset.from_tensor_slices((input_img_path_test, input_annotation_path_test))
+
+trainloader = (
+    trainloader
+    .shuffle(1024)
+    .map(load_and_preprocess, num_parallel_calls=AUTOTUNE)
+    .batch(BATCH_SIZE)
+    .prefetch(AUTOTUNE)
+    )
+
+testloader = (
+    testloader
+    .map(load_and_preprocess, num_parallel_calls=AUTOTUNE)
+    .prefetch(AUTOTUNE)
+    )
+
+print("Data prepared successfully")
+
+# create model
+base_model = tf.keras.applications.MobileNetV2(input_shape = [128, 128, 3], include_top=False)
+
+# this part for downsampling
+# Use the activations of these layers
+layer_names = [
+    'block_1_expand_relu',   # 64x64
+    'block_3_expand_relu',   # 32x32
+    'block_6_expand_relu',   # 16x16
+    'block_13_expand_relu',  # 8x8
+    'block_16_project',      # 4x4
+]
+
+base_model_outputs = [base_model.get_layer(name).output for name in layer_names]
+
+down_stack = tf.keras.Model(inputs = base_model.input, outputs = base_model_outputs)
+down_stack.trainable = False
+
+#this part is for upsampling
+up_stack = [
+    pix2pix.upsample(512, 3),  # 4x4 -> 8x8
+    pix2pix.upsample(256, 3),  # 8x8 -> 16x16
+    pix2pix.upsample(128, 3),  # 16x16 -> 32x32
+    pix2pix.upsample(64, 3),   # 32x32 -> 64x64
+]
+
+def unet_model(output_channels:int):
+    inputs = tf.keras.layers.Input(shape=[128, 128, 3])
+
+    # Downsampling through model
+    skips = down_stack(inputs)
+    x = skips[-1]
+    skips = reversed(skips[:-1])
+
+    # Upsampling and establishing the skip connections
+    for up, skip in zip(up_stack, skips):
+        x = up(x)
+        concat = 
