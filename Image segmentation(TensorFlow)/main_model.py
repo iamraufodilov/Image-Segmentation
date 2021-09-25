@@ -6,6 +6,7 @@ import tensorflow_datasets as tfds
 from tensorflow_examples.models.pix2pix import pix2pix
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
+from IPython import display
 import os
 
 # load dataset
@@ -113,4 +114,29 @@ def unet_model(output_channels:int):
     # Upsampling and establishing the skip connections
     for up, skip in zip(up_stack, skips):
         x = up(x)
-        concat = 
+        concat = tf.keras.layers.Concatenate()
+        x = concat([x, skip])
+
+    # last layer of model
+    last = tf.keras.layers.Conv2DTranspose(
+        filters=output_channels, kernel_size=3, strides=2,
+        padding='same')
+    x = last(x)
+
+    return tf.keras.Model(inputs=inputs, outputs=x)
+
+OUTPUT_CHANNELS = 3
+
+model = unet_model(output_channels=OUTPUT_CHANNELS)
+model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              metrics=['accuracy'])
+
+model.summary()
+
+
+EPOCHS = 5
+
+model_history = model.fit(epochs=EPOCHS)
+
+# cannot finish, because of some bugs
