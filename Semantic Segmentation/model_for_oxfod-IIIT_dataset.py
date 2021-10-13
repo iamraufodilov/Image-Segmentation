@@ -13,26 +13,19 @@ from IPython.display import clear_output
 
 
 # download dataset
-ds_img_path = r'G:/rauf/STEPBYSTEP/Data2/oxford_pets/images/'
-ds_ann_path = r'G:/rauf/STEPBYSTEP/Data/oxford_pets/annotations/trimaps/'
+ds_path = "G:/rauf/STEPBYSTEP/Data2/oxford_pets/"
 
-IMG_HEIGHT = 224
-IMG_WIDTH = 224
+def normalize(input_img, input_maks):
+    img = tf.cast(input_img, dtype=tf.float32) / 255.0
+    input_maks -= 1
+    return img, input_maks
 
-def load_images(ds_path):
-    images = list()
-    for file in ds_path:
-        data_path = os.path.join(ds_path, file)
+def load_train_ds(data_path):
+    img = tf.image.resize(data_path['images'], size=(224, 224))
+    mask = tf.image.resize(data_path['masks'], size=(224, 224))
 
+    img, mask = normalize(img, mask)
 
-    # convert to tensor
-    images = tf.convert_to_tensor(images, dtype= tf.string)
-    image = tf.read_file(image)
-    image = tf.image.decode_jpeg(image, channels=3)
+    return img, mask
 
-    image /=255
-
-    return image
-
-train = load_images(ds_img_path)
-print(train)
+train = ds_path['train'].map(load_train_ds, num_parallel_calls=tf.data.experimental.AUTOTUNE)
