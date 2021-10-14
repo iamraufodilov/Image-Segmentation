@@ -28,4 +28,35 @@ def load_train_ds(data_path):
 
     return img, mask
 
-train = ds_path['train'].map(load_train_ds, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+#train = ds_path['train'].map(load_train_ds, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+
+# load dataset
+
+BATCH_SIZE = 32
+IMG_HEIGHT = 224
+IMG_WIDTH = 224
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+
+ds_img_path = "G:/rauf/STEPBYSTEP/Data2/oxford_pets/train/images"
+ds_ann_path = "G:/rauf/STEPBYSTEP/Data2/oxford_pets/train/masks"
+
+list_ds = tf.data.Dataset.list_files(str(ds_img_path))
+
+def decode_img(input_img):
+    image = tf.image.decode_jpeg(input_img, channels=3)
+    image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    return tf.image.resize(image, size=(IMG_HEIGHT, IMG_WIDTH))
+
+def process_path(input_path):
+    img = tf.io.read_file(input_path)
+    img = decode_img(img)
+    return img
+
+dataset = list_ds.map(process_path, num_parallel_calls=AUTOTUNE)
+
+for i in dataset:
+    print("first result", i)
+    break
+#for f in dataset.take(1):
+    #print(f.numpy().shape())
