@@ -55,8 +55,36 @@ def process_path(input_path):
 
 dataset = list_ds.map(process_path, num_parallel_calls=AUTOTUNE)
 
-for i in dataset:
-    print("first result", i)
-    break
-#for f in dataset.take(1):
-    #print(f.numpy().shape())
+
+# fucking load dataset
+
+from keras.preprocessing.image import ImageDataGenerator
+# create generator
+datagen = ImageDataGenerator()
+
+img = datagen.flow_from_directory('G:/rauf/STEPBYSTEP/Data2/oxford_pets/train')
+
+def normalize(input_image, input_mask):
+  img = tf.cast(input_image, dtype=tf.float32) / 255.0
+  input_mask -= 1
+  return img, input_mask
+
+def load_train_ds(dataset):
+  img = tf.image.resize(dataset['images'], size=(width, height))
+  mask = tf.image.resize(dataset['masks'], size=(width, height))
+
+  if tf.random.uniform(()) > 0.5:
+    img = tf.image.flip_left_right(img)
+    mask = tf.image.flip_left_right(mask)
+  
+  img, mask = normalize(img, mask)
+  return img, mask
+
+def load_test_ds(dataset):
+  img = tf.image.resize(dataset['images'], size=(width, height))
+  mask = tf.image.resize(dataset['masks'], size=(width, height))
+  
+  img, mask = normalize(img, mask)
+  return img, mask
+
+train = img.map(load_train_ds, num_parallel_calls=tf.data.experimental.AUTOTUNE)
